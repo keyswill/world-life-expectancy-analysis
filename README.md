@@ -13,6 +13,8 @@ quality assessment, staging, duplicate removal, missing-value treatment, type
 standardization, validation, window functions, longitudinal metrics, Pearson
 correlation, peer benchmarking, and a transparent multi-metric priority score.
 
+![World Life Expectancy Analysis executive summary](images/WLE_analysis_summary.png)
+
 ## Business problem
 
 A global health organization has limited analytical and program resources. It
