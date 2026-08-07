@@ -1,31 +1,17 @@
 /*==============================================================================
-PROJECT: World Life Expectancy Analysis
-SCRIPT: WLE_02_data_cleaning.sql
-AUTHOR: Kiran Williams
-DATABASE: MySQL 8.0+
+WORLD LIFE EXPECTANCY ANALYSIS
+SCRIPT 2: DATA CLEANING
 
-PURPOSE
--------------------------------------------------------------------------------
-Create a reproducible analytical table from WLE_raw while preserving the raw
-source. The script removes exact duplicates, restores unambiguous statuses,
-imputes two internal life-expectancy gaps, standardizes names and data types,
-and converts implausible zero placeholders to NULL where appropriate.
-
-CORE PRINCIPLE
--------------------------------------------------------------------------------
-WLE_raw is never modified. WLE_staging and WLE_clean can be rebuilt by rerunning
-this script, allowing another analyst to reproduce every transformation.
+Build reproducible staging and analytical tables without changing WLE_raw.
+Transformations cover confirmed duplicates, missing statuses, two internal
+life-expectancy gaps, data types, naming, and documented zero placeholders.
 ==============================================================================*/
 
 USE WLE;
 
 
-/*------------------------------------------------------------------------------
-SECTION 1: REBUILD THE STAGING TABLE
-
-The staging table is a disposable working copy. Rebuilding it from WLE_raw
-prevents previous test runs from contaminating the final process.
-------------------------------------------------------------------------------*/
+/* SECTION 1: Rebuild WLE_staging from the untouched source so previous runs
+   cannot affect the current result. */
 
 DROP TABLE IF EXISTS WLE_staging;
 
@@ -45,17 +31,11 @@ SELECT
         ELSE 'FAIL'
     END AS copy_validation;
 
-/* EXPECTED RESULT: 2,941 raw rows, 2,941 staging rows, PASS. */
+/* EXPECTED: 2,941 raw rows, 2,941 staging rows, PASS. */
 
 
-/*------------------------------------------------------------------------------
-SECTION 2: REMOVE EXACT DUPLICATE COUNTRY-YEAR RECORDS
-
-Business rule:
-One row should represent one country in one year. The three duplicate pairs
-contain identical analytical values and differ only by Row_ID. The lowest
-Row_ID is retained as a deterministic tie-breaker.
-------------------------------------------------------------------------------*/
+/* SECTION 2: Remove three exact duplicate country-year records. Retain the
+   lowest Row_ID as a consistent tie-breaker. */
 
 SELECT
     Row_ID,
@@ -94,24 +74,11 @@ WHERE Row_ID IN
     WHERE duplicate_rank > 1
 );
 
-/*
-EXPECTED RESULT
----------------
-Deleted Row_ID values: 1252, 2265, and 2929
-Remaining staging rows: 2,938
-*/
+/* EXPECTED: Delete Row_ID 1252, 2265, and 2929; retain 2,938 staging rows. */
 
 
-/*------------------------------------------------------------------------------
-SECTION 3: RESTORE MISSING DEVELOPMENT STATUS
-
-Status is stable within every country in the source. A blank value can therefore
-be restored from another nonblank record for the same country.
-
-The preliminary consistency check must return zero countries. If a country had
-multiple nonblank statuses, an external business rule would be required rather
-than automatically selecting one.
-------------------------------------------------------------------------------*/
+/* SECTION 3: Restore missing Status values only when the same country has one
+   consistent nonblank classification elsewhere in the source. */
 
 SELECT
     Country,
@@ -120,7 +87,7 @@ FROM WLE_staging
 GROUP BY Country
 HAVING COUNT(DISTINCT NULLIF(TRIM(Status), '')) > 1;
 
-/* EXPECTED RESULT: zero rows. */
+/* EXPECTED: No country has conflicting nonblank status values. */
 
 UPDATE WLE_staging AS target
 INNER JOIN
@@ -140,19 +107,11 @@ SET target.Status = country_status.resolved_status
 WHERE target.Status IS NULL
    OR TRIM(target.Status) = '';
 
-/* EXPECTED RESULT: 8 rows updated. */
+/* EXPECTED: Eight missing status values restored. */
 
 
-/*------------------------------------------------------------------------------
-SECTION 4: IMPUTE TWO INTERNAL LIFE-EXPECTANCY GAPS
-
-Only two life-expectancy values are blank. Both occur between valid observations
-for the same country. Linear midpoint interpolation is used because it preserves
-the local country trend without borrowing information from unrelated countries.
-
-This is an estimate, not an observed measurement. The affected rows are recorded
-in the final table through life_expectancy_imputed = 1.
-------------------------------------------------------------------------------*/
+/* SECTION 4: Estimate the two internal life-expectancy gaps using the midpoint
+   of adjacent country years. Flag both estimates in the clean table. */
 
 SELECT
     target.Country,
@@ -195,28 +154,15 @@ SET target.Lifeexpectancy = ROUND
 WHERE target.Lifeexpectancy IS NULL
    OR TRIM(target.Lifeexpectancy) = '';
 
-/*
-EXPECTED RESULT
----------------
-Afghanistan, 2018: 59.2
-Albania, 2018:     76.6
-*/
+/* EXPECTED: Afghanistan 2018 = 59.2; Albania 2018 = 76.6. */
 
 
-/*------------------------------------------------------------------------------
-SECTION 5: CREATE THE TYPED ANALYTICAL TABLE
+/* SECTION 5: Create WLE_clean with analytical data types, standardized names,
+   a unique country-year key, and basic domain constraints.
 
-WLE_clean uses concise snake_case names and purpose-appropriate data types.
-Constraints enforce the expected grain, year range, and status categories.
-
-Zero-handling rules:
-    Converted to NULL: life expectancy, adult mortality, GDP, BMI, Polio,
-    Diphtheria, thinness measures, and schooling.
-
-    Retained as zero: infant deaths, under-five deaths, measles cases, HIV/AIDS,
-    and percentage expenditure because zero can be meaningful or its meaning is
-    too ambiguous to overwrite without additional source documentation.
-------------------------------------------------------------------------------*/
+   Convert implausible zero placeholders to NULL for life expectancy, adult
+   mortality, GDP, BMI, vaccination, thinness, and schooling. Retain zeros where
+   they may be meaningful or the source definition is unclear. */
 
 DROP TABLE IF EXISTS WLE_clean;
 
@@ -252,13 +198,8 @@ CREATE TABLE WLE_clean
 );
 
 
-/*------------------------------------------------------------------------------
-SECTION 6: LOAD STANDARDIZED VALUES INTO WLE_clean
-
-The two known source gaps are identified by Row_ID so the imputation flag remains
-auditable. NULLIF converts designated zero placeholders to SQL NULL, preventing
-them from biasing averages, relationships, and country rankings.
-------------------------------------------------------------------------------*/
+/* SECTION 6: Load standardized values and preserve an auditable flag for the
+   two estimated life-expectancy records. */
 
 INSERT INTO WLE_clean
 (
@@ -305,12 +246,7 @@ SELECT
 FROM WLE_staging;
 
 
-/*------------------------------------------------------------------------------
-SECTION 7: CLEANING RECONCILIATION
-
-The final control totals provide immediate evidence that the script produced the
-expected analytical layer without modifying the source.
-------------------------------------------------------------------------------*/
+/* SECTION 7: Reconcile the raw, staging, and clean layers. */
 
 SELECT
     (SELECT COUNT(*) FROM WLE_raw) AS raw_rows,
@@ -321,15 +257,7 @@ SELECT
     (SELECT COUNT(*) FROM WLE_clean WHERE development_status IS NULL)
         AS missing_status_rows;
 
-/*
-EXPECTED RESULT
----------------
-Raw rows:                        2,941
-Staging rows:                    2,938
-Clean rows:                      2,938
-Imputed life-expectancy rows:        2
-Missing status rows:                 0
+/* EXPECTED: 2,941 raw rows; 2,938 staging and clean rows; two imputed
+   life-expectancy records; no missing Status values.
 
-The next script, WLE_03_data_validation.sql, performs independent quality and
-reconciliation tests before WLE_clean is approved for business analysis.
-*/
+   Next: run WLE_03_data_validation.sql before business analysis. */
