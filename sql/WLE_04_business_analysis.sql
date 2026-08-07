@@ -1,38 +1,24 @@
 /*==============================================================================
-PROJECT: World Life Expectancy Analysis
-SCRIPT: WLE_04_business_analysis.sql
-AUTHOR: Kiran Williams
-DATABASE: MySQL 8.0+
+WORLD LIFE EXPECTANCY ANALYSIS
+SCRIPT 4: BUSINESS ANALYSIS
 
-STAKEHOLDER
--------------------------------------------------------------------------------
-A global health program director deciding which countries warrant further
-investigation and targeted support.
+Audience: a global health program director deciding where deeper investigation
+may be warranted.
 
-PRIMARY BUSINESS QUESTION
--------------------------------------------------------------------------------
-Which countries demonstrate the greatest health-outcome needs or improvement
-opportunities based on life expectancy, mortality, immunization, education,
-and economic indicators?
+Main question: Which countries show the strongest health-outcome needs or
+improvement opportunities across mortality, immunization, education, and
+economic indicators?
 
-INTERPRETATION GUARDRAIL
--------------------------------------------------------------------------------
-The analysis identifies associations and prioritization signals. It does not
-prove causation or justify funding decisions without local context, population
-data, program-cost data, and current field validation.
+The results are prioritization signals, not causal findings or automatic funding
+decisions. Local context, current data, population, cost, and capacity are not
+included in this dataset.
 ==============================================================================*/
 
 USE WLE;
 
 
-/*------------------------------------------------------------------------------
-QUESTION 1: HOW DID AVERAGE LIFE EXPECTANCY CHANGE FROM 2007 TO 2022?
-
-Metric:
-Unweighted mean country life expectancy by year. Each country contributes one
-observation, preventing countries with larger populations from dominating the
-measure. This is a country benchmark, not a population-weighted global estimate.
-------------------------------------------------------------------------------*/
+/* QUESTION 1: How did the unweighted country average for life expectancy
+   change from 2007 to 2022? This is not a population-weighted global estimate. */
 
 SELECT
     year,
@@ -43,26 +29,12 @@ WHERE life_expectancy IS NOT NULL
 GROUP BY year
 ORDER BY year;
 
-/*
-KEY RESULT
-----------
-2007 average: 66.75 years
-2022 average: 71.62 years
-Change:        4.87 years, or 7.29%
-
-Business implication:
-The country-level benchmark improved, but the average alone can conceal nations
-that stagnated or declined. Country-specific trend analysis is required.
-*/
+/* RESULT: The average increased from 66.75 to 71.62 years, a gain of 4.87
+   years (7.29%). The average can still conceal countries that declined. */
 
 
-/*------------------------------------------------------------------------------
-QUESTION 2: WHICH COUNTRIES IMPROVED OR DECLINED THE MOST?
-
-Only countries with valid observations in both 2007 and 2022 are eligible.
-This measures true first-to-last change, unlike MAX minus MIN, which measures
-range and can mislabel temporary volatility as sustained improvement.
-------------------------------------------------------------------------------*/
+/* QUESTION 2: Which countries changed the most between valid 2007 and 2022
+   observations? First-to-last change avoids treating temporary range as trend. */
 
 WITH country_endpoints AS
 (
@@ -94,29 +66,16 @@ SELECT
 FROM country_change
 ORDER BY total_change DESC;
 
-/*
-KEY RESULT
-----------
-Largest gains included Zimbabwe (+21.0), Eritrea (+19.4), Zambia (+18.0),
-Botswana (+17.9), and Rwanda (+17.8) years.
+/* RESULT: The largest gains include Zimbabwe (+21.0), Eritrea (+19.4), and
+   Zambia (+18.0). The largest declines include Syrian Arab Republic (-8.1),
+   Saint Vincent and the Grenadines (-5.8), and Libya (-5.3).
 
-Largest declines included Syrian Arab Republic (-8.1), Saint Vincent and the
-Grenadines (-5.8), Libya (-5.3), Paraguay (-5.0), and Yemen (-2.3) years.
-
-Business implication:
-High-improvement countries warrant investigation for transferable practices,
-while declining countries require contextual review of instability, health-
-system disruption, and data quality before intervention design.
-*/
+   Use these results to select countries for contextual review, not to assign
+   causes or design interventions from this dataset alone. */
 
 
-/*------------------------------------------------------------------------------
-QUESTION 3: HOW LARGE IS THE DEVELOPED-DEVELOPING OUTCOME GAP?
-
-Both the full-period and latest-year views are shown. Record counts are included
-so decision-makers can see the unequal group sizes rather than interpreting the
-averages without sample context.
-------------------------------------------------------------------------------*/
+/* QUESTION 3: How large is the life-expectancy gap between developed and
+   developing groups? Include record counts because group sizes differ. */
 
 SELECT
     development_status,
@@ -136,27 +95,13 @@ WHERE year = 2022
   AND life_expectancy IS NOT NULL
 GROUP BY development_status;
 
-/*
-KEY RESULT
-----------
-Full period: Developed 79.20 years; Developing 67.11 years; gap 12.09 years.
-2022:        Developed 80.71 years; Developing 69.69 years; gap 11.02 years.
-
-Business implication:
-The 2022 gap was smaller than the full-period gap but remained material. Status
-is a broad classification, so country-level drivers must guide prioritization.
-*/
+/* RESULT: The full-period gap is 12.09 years; the 2022 gap is 11.02 years.
+   The broad Status category does not explain the country-level drivers. */
 
 
-/*------------------------------------------------------------------------------
-QUESTION 4: WHICH METRICS HAVE THE STRONGEST ASSOCIATIONS WITH LIFE EXPECTANCY?
-
-Pearson correlation is calculated from complete pairs for each metric. Pairwise
-sample size is shown because missingness differs by field.
-
-Correlation ranges from -1 to +1. A large absolute value indicates a stronger
-linear relationship, not a causal effect.
-------------------------------------------------------------------------------*/
+/* QUESTION 4: Which metrics have the strongest linear relationships with life
+   expectancy? Pairwise sample sizes are shown because missingness varies.
+   Correlation measures association, not causation. */
 
 WITH metric_pairs AS
 (
@@ -210,41 +155,17 @@ SELECT
 FROM correlation_components
 ORDER BY ABS(pearson_correlation) DESC;
 
-/*
-KEY RESULT
-----------
-Schooling:            +0.784
-Adult mortality:      -0.696
-BMI:                  +0.568
-HIV/AIDS:             -0.557
-Diphtheria coverage:  +0.479
-Polio coverage:       +0.466
-GDP:                  +0.461
-
-Business implication:
-Education and mortality measures provide the strongest screening signals in
-this dataset. Program leaders should combine them with immunization and economic
-context rather than relying on GDP alone.
-*/
+/* RESULT: Schooling has the strongest positive relationship (r = 0.784), and
+   adult mortality has the strongest negative relationship (r = -0.696).
+   These are screening signals that should be considered with health-system,
+   immunization, and economic context. */
 
 
-/*------------------------------------------------------------------------------
-QUESTION 5: WHICH 2022 COUNTRIES SHOW THE BROADEST COMBINATION OF NEED SIGNALS?
+/* QUESTION 5: Which 2022 countries fall on the higher-need side of all six
+   median benchmarks? One point is assigned for each signal.
 
-Priority score:
-One point is assigned for each metric falling on the higher-need side of the
-2022 median among countries with complete values for all six indicators.
-
-    - Below-median life expectancy
-    - Above-median adult mortality
-    - Below-median Polio coverage
-    - Below-median Diphtheria coverage
-    - Below-median schooling
-    - Below-median GDP
-
-The score is a transparent screening tool, not a funding formula. Equal weights
-avoid implying unsupported precision about the relative value of each metric.
-------------------------------------------------------------------------------*/
+   The equal-weight score is transparent but intentionally simple. It creates a
+   review list; it is not a funding formula. */
 
 WITH latest_complete AS
 (
@@ -301,21 +222,12 @@ SELECT
 FROM priority_flags
 ORDER BY priority_score DESC, life_expectancy ASC, country;
 
-/*
-Business implication:
-Countries scoring across all six need signals should move to a second-stage
-assessment incorporating population affected, local program capacity, current
-data, intervention costs, and country-specific context.
-*/
+/* DECISION USE: Countries with several need signals should move to a second
+   review using population, current conditions, capacity, cost, and local context. */
 
 
-/*------------------------------------------------------------------------------
-QUESTION 6: WHICH COUNTRIES OUTPERFORM OR UNDERPERFORM ECONOMIC PEERS?
-
-Countries are divided into 2022 GDP quartiles. Life expectancy is compared with
-the average of the relevant GDP peer group. This identifies outcomes that GDP
-alone does not explain and supports peer-learning or diagnostic follow-up.
-------------------------------------------------------------------------------*/
+/* QUESTION 6: Which countries outperform or underperform the average of their
+   2022 GDP quartile? This helps identify outcomes that GDP alone does not explain. */
 
 WITH latest_gdp AS
 (
@@ -353,20 +265,12 @@ INNER JOIN peer_benchmarks AS peer
     ON latest.gdp_quartile = peer.gdp_quartile
 ORDER BY performance_vs_peer_average DESC;
 
-/*
-Business implication:
-Positive outliers may reveal practices worth investigating. Negative outliers
-may indicate barriers not captured by GDP, but the result should not be treated
-as causal or as proof of program effectiveness.
-*/
+/* DECISION USE: Positive and negative outliers can guide follow-up questions,
+   but neither result proves program effectiveness or causation. */
 
 
-/*------------------------------------------------------------------------------
-EXECUTIVE KPI SUMMARY
-
-This final query returns a compact latest-year snapshot suitable for an
-executive summary or future dashboard.
-------------------------------------------------------------------------------*/
+/* EXECUTIVE KPI SUMMARY: Return a compact 2022 snapshot for reporting or a
+   future dashboard. */
 
 SELECT
     year,
@@ -381,11 +285,10 @@ WHERE year = 2022
 GROUP BY year;
 
 /*==============================================================================
-RECOMMENDED DECISION SEQUENCE
--------------------------------------------------------------------------------
-1. Use the priority score to identify candidates for further investigation.
-2. Review outcome trends and GDP-peer performance for each candidate.
-3. Validate signals with current country-level and population-weighted data.
-4. Add intervention costs, local capacity, equity, and implementation risk.
-5. Make funding decisions only after stakeholder and subject-matter review.
+RECOMMENDED DECISION PROCESS
+1. Use the priority score to create an investigation list.
+2. Review each candidate's trend and GDP-peer performance.
+3. Validate the signal with current and population-aware data.
+4. Add cost, local capacity, equity, and implementation risk.
+5. Make funding decisions with stakeholder and subject-matter review.
 ==============================================================================*/
