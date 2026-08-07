@@ -1,135 +1,50 @@
 /*==============================================================================
-PROJECT: World Life Expectancy Analysis
-SCRIPT: WLE_01_data_audit.sql
-AUTHOR: Kiran Williams
-DATABASE: MySQL
+WORLD LIFE EXPECTANCY ANALYSIS
+SCRIPT 1: RAW DATA AUDIT
 
-PROJECT PURPOSE
--------------------------------------------------------------------------------
-This project analyzes country-level health, economic, and education indicators
-to help a global health organization identify disparities, monitor changes in
-life expectancy, and prioritize countries for additional investigation.
-
-PURPOSE OF THIS SCRIPT
--------------------------------------------------------------------------------
-This script performs a read-only audit of the raw World Life Expectancy table
-before any cleaning or transformation occurs.
-
-The audit establishes:
-
-    1. The imported table structure and data types
-    2. The number of source records
-    3. The geographic and time coverage
-    4. The intended grain of the dataset
-    5. Duplicate country-year records
-    6. Countries with incomplete time coverage
-    7. Missing values in core analytical fields
-    8. Development-status categories
-    9. Suspicious zero values requiring further investigation
-
-DATA-HANDLING PRINCIPLE
--------------------------------------------------------------------------------
-WLE_raw is the untouched source layer. This script contains only SELECT,
-DESCRIBE, and SHOW statements and does not modify the raw data.
-
-Recorded results reflect the supplied CSV and provide a baseline against which
-the later cleaning process can be reconciled.
+This read-only audit establishes the source structure, record count, coverage,
+expected country-year grain, missing values, duplicates, and suspicious zeros
+before cleaning begins. WLE_raw is never modified.
 ==============================================================================*/
 
 
-/*------------------------------------------------------------------------------
-SECTION 1: SELECT THE PROJECT DATABASE
-
-This statement establishes the database context for every query that follows.
-------------------------------------------------------------------------------*/
+/* SECTION 1: Select the project database. */
 
 USE WLE;
 
 
-/*------------------------------------------------------------------------------
-SECTION 2: INSPECT THE RAW TABLE STRUCTURE
-
-DESCRIBE returns each column's name, data type, nullability, key status, and
-default value.
-
-Business relevance:
-Incorrect data types can produce inaccurate calculations. For example,
-Lifeexpectancy was imported as text and must be converted to a numeric type in
-the analytical layer before averages, changes, and rankings are calculated.
-------------------------------------------------------------------------------*/
+/* SECTION 2: Inspect the imported structure and identify fields that need
+   stronger data types in the analytical table. */
 
 DESCRIBE WLE_raw;
 
-/*
-AUDIT RESULT
-------------
-The raw table contains 18 columns. All columns allow NULL values, Row_ID is not
-defined as a primary key, and Lifeexpectancy was imported as VARCHAR rather
-than a numeric type.
-
-Interpretation:
-The Import Wizard preserved the source values, but a properly typed analytical
-table will be needed for reliable calculations and enforceable data rules.
-*/
+/* RESULT: WLE_raw has 18 nullable columns. Row_ID is not a primary key, and
+   Lifeexpectancy was imported as text. */
 
 
-/*------------------------------------------------------------------------------
-SECTION 3: RETRIEVE THE COMPLETE RAW TABLE DEFINITION
-
-SHOW CREATE TABLE documents the exact imported schema, including the storage
-engine, character set, column definitions, and existing constraints.
-
-This creates an auditable record of the source structure before transformations
-are applied in a separate staging table.
-------------------------------------------------------------------------------*/
+/* SECTION 3: Record the complete source-table definition before transformation. */
 
 SHOW CREATE TABLE WLE_raw;
 
 
-/*------------------------------------------------------------------------------
-SECTION 4: REVIEW A SAMPLE OF THE IMPORTED DATA
-
-A small sample verifies that values aligned with the expected columns during
-the CSV import. LIMIT avoids retrieving the entire table for a visual check.
-------------------------------------------------------------------------------*/
+/* SECTION 4: Review a small sample to confirm that the CSV values aligned with
+   the expected columns during import. */
 
 SELECT *
 FROM WLE_raw
 LIMIT 10;
 
 
-/*------------------------------------------------------------------------------
-SECTION 5: ESTABLISH THE BASELINE ROW COUNT
-
-The raw row count is the control total for the cleaning process. Any difference
-between the raw and cleaned tables must later be explained by a documented
-transformation, such as the removal of confirmed duplicate records.
-------------------------------------------------------------------------------*/
+/* SECTION 5: Establish the raw control total for later reconciliation. */
 
 SELECT
     COUNT(*) AS total_imported_rows
 FROM WLE_raw;
 
-/*
-AUDIT RESULT
-------------
-Total imported rows: 2,941
-
-Interpretation:
-The raw MySQL table reconciles to the supplied CSV row count.
-*/
+/* RESULT: 2,941 imported rows, matching the supplied CSV. */
 
 
-/*------------------------------------------------------------------------------
-SECTION 6: MEASURE GEOGRAPHIC AND TIME COVERAGE
-
-These metrics define the analytical scope of the dataset:
-
-    - Number of represented countries
-    - Earliest available year
-    - Latest available year
-    - Number of distinct years
-------------------------------------------------------------------------------*/
+/* SECTION 6: Confirm the geographic and time coverage of the dataset. */
 
 SELECT
     COUNT(DISTINCT Country) AS distinct_countries,
@@ -138,29 +53,11 @@ SELECT
     COUNT(DISTINCT Year) AS distinct_years
 FROM WLE_raw;
 
-/*
-AUDIT RESULT
-------------
-Distinct countries: 193
-Earliest year:       2007
-Latest year:         2022
-Distinct years:      16
-
-Interpretation:
-The dataset provides a 16-year analytical window, but country-level coverage
-must be checked before all countries are included in trend comparisons.
-*/
+/* RESULT: 193 countries across 2007-2022, a 16-year reporting window. */
 
 
-/*------------------------------------------------------------------------------
-SECTION 7: REVIEW RECORD COUNTS BY YEAR
-
-This query compares total rows with distinct countries for every year.
-
-If total records exceed distinct countries, at least one country-year may be
-duplicated. If country coverage changes materially between years, comparisons
-of unweighted annual averages may also be affected by the changing sample.
-------------------------------------------------------------------------------*/
+/* SECTION 7: Compare yearly record counts with distinct-country counts.
+   Differences can reveal duplicates or changes in country coverage. */
 
 SELECT
     Year,
@@ -170,34 +67,12 @@ FROM WLE_raw
 GROUP BY Year
 ORDER BY Year;
 
-/*
-AUDIT RESULT
-------------
-Most years contain 183 countries and 183 records.
-
-Exceptions:
-    - 2009 contains 183 countries and 184 records.
-    - 2019 contains 183 countries and 184 records.
-    - 2022 contains 183 countries and 184 records.
-    - 2020 contains 193 countries and 193 records.
-
-Interpretation:
-The three years with more records than countries contain duplicate observations.
-Ten additional countries appear only in 2020, creating incomplete histories
-that must be excluded from longitudinal rankings.
-*/
+/* RESULT: Most years contain 183 countries. The 2009, 2019, and 2022 totals
+   each contain one duplicate; 2020 includes ten additional single-year countries. */
 
 
-/*------------------------------------------------------------------------------
-SECTION 8: IDENTIFY DUPLICATE COUNTRY-YEAR COMBINATIONS
-
-DATA GRAIN
-One row is intended to represent one country during one year. Country and Year
-therefore form the expected natural key.
-
-Any combination appearing more than once can improperly increase that
-country-year's influence on averages and other aggregated metrics.
-------------------------------------------------------------------------------*/
+/* SECTION 8: Find duplicate country-year keys. One row should represent one
+   country in one year; duplicates would distort aggregated results. */
 
 SELECT
     Country,
@@ -213,28 +88,11 @@ ORDER BY
     Country,
     Year;
 
-/*
-AUDIT RESULT
-------------
-Ireland, 2022:  2 records
-Senegal, 2009:  2 records
-Zimbabwe, 2019: 2 records
-
-Interpretation:
-The raw dataset contains three duplicated country-year groups. The paired
-records contain identical analytical values and differ only in Row_ID.
-*/
+/* RESULT: Ireland 2022, Senegal 2009, and Zimbabwe 2019 are duplicated.
+   Each pair has identical analytical values and differs only by Row_ID. */
 
 
-/*------------------------------------------------------------------------------
-SECTION 9: COUNT EXCESS DUPLICATE ROWS
-
-This query counts rows beyond the expected one record per country-year group.
-For example, a group appearing three times contains two excess rows.
-
-COALESCE converts the NULL returned by SUM when no duplicate groups exist into
-an interpretable value of zero, making the validation reusable after cleaning.
-------------------------------------------------------------------------------*/
+/* SECTION 9: Count records beyond the expected one row per country-year. */
 
 SELECT
     COALESCE(SUM(record_count - 1), 0) AS excess_duplicate_rows
@@ -251,29 +109,12 @@ FROM
     HAVING COUNT(*) > 1
 ) AS duplicate_summary;
 
-/*
-AUDIT RESULT
-------------
-Excess duplicate rows: 3
-
-Interpretation:
-Removing one confirmed copy from each duplicated group should reduce the row
-count from 2,941 to 2,938 without eliminating a unique country-year observation.
-*/
+/* RESULT: Three excess duplicate rows. Removing one confirmed copy from each
+   pair should reconcile 2,941 raw rows to 2,938 clean rows. */
 
 
-/*------------------------------------------------------------------------------
-SECTION 10: IDENTIFY COUNTRIES WITH INCOMPLETE TIME COVERAGE
-
-The supplied dataset spans 16 years. A country requires 16 distinct years to
-have a complete history for this dataset.
-
-COUNT(DISTINCT Year), rather than COUNT(*), prevents duplicate rows from making
-a country's history appear more complete than it is.
-
-Countries with fewer than 16 years should not be included in first-to-last
-trend rankings because a single observation cannot establish change over time.
-------------------------------------------------------------------------------*/
+/* SECTION 10: Identify countries without all 16 years of history. These
+   countries cannot support first-to-last trend comparisons. */
 
 SELECT
     Country,
@@ -288,37 +129,12 @@ ORDER BY
     years_available ASC,
     Country;
 
-/*
-AUDIT RESULT
-------------
-Ten countries contain only a 2020 observation:
-
-    - Cook Islands
-    - Dominica
-    - Marshall Islands
-    - Monaco
-    - Nauru
-    - Niue
-    - Palau
-    - Saint Kitts and Nevis
-    - San Marino
-    - Tuvalu
-
-Interpretation:
-These countries may be included in eligible cross-sectional analyses for 2020,
-but they must be excluded from multi-year trend calculations.
-*/
+/* RESULT: Ten countries appear only in 2020. They may support eligible
+   cross-sectional analysis but must be excluded from longitudinal rankings. */
 
 
-/*------------------------------------------------------------------------------
-SECTION 11: AUDIT MISSING VALUES IN CORE FIELDS
-
-This query counts both SQL NULL values and blank strings because CSV imports
-can represent missing data in different ways.
-
-Zero values are evaluated separately. A zero may be valid for some measures,
-such as reported measles cases, but implausible or unavailable for others.
-------------------------------------------------------------------------------*/
+/* SECTION 11: Count NULL and blank values in fields required for analysis.
+   Zero values are reviewed separately because their meaning varies by metric. */
 
 SELECT
     SUM(
@@ -350,28 +166,11 @@ SELECT
     ) AS missing_life_expectancy
 FROM WLE_raw;
 
-/*
-AUDIT RESULT
-------------
-Missing country values:         0
-Missing year values:            0
-Missing status values:          8
-Missing life-expectancy values: 2
-
-Interpretation:
-Country and Year are complete. Status can be restored only when another row for
-the same country provides an unambiguous classification. The two missing life-
-expectancy observations require a documented imputation or exclusion rule.
-*/
+/* RESULT: Country and Year are complete. Eight Status values and two
+   Lifeexpectancy values are missing and require documented treatment. */
 
 
-/*------------------------------------------------------------------------------
-SECTION 12: REVIEW DEVELOPMENT-STATUS CATEGORIES
-
-Status should contain a controlled set of categories. This frequency table
-exposes missing values, inconsistent capitalization, spelling differences, and
-unexpected classifications before standardization.
-------------------------------------------------------------------------------*/
+/* SECTION 12: Review the development-status domain for unexpected categories. */
 
 SELECT
     CASE
@@ -389,36 +188,12 @@ GROUP BY
     END
 ORDER BY record_count DESC;
 
-/*
-AUDIT RESULT
-------------
-Developing: 2,421 records
-Developed:    512 records
-[BLANK]:        8 records
-
-Control total: 2,941 records
-
-Interpretation:
-No misspelled or inconsistently capitalized categories were identified. Eight
-records require status restoration during cleaning.
-*/
+/* RESULT: 2,421 Developing, 512 Developed, and 8 blank records. No spelling or
+   capitalization problems were found. */
 
 
-/*------------------------------------------------------------------------------
-SECTION 13: IDENTIFY SUSPICIOUS ZERO VALUES
-
-Zero does not have the same meaning across every metric.
-
-Examples:
-    - Zero infant deaths or measles cases may be possible.
-    - Zero GDP is unlikely to represent a valid economic measurement.
-    - Zero life expectancy is not a plausible country-level outcome.
-    - Zero vaccination coverage, BMI, or schooling may represent unavailable
-      data rather than a measured value.
-
-This query documents zero frequency without automatically changing values.
-Each metric will receive a field-specific rule during cleaning and analysis.
-------------------------------------------------------------------------------*/
+/* SECTION 13: Count suspicious zeros without changing them. Some zeros may be
+   valid; others may represent missing data and require field-specific rules. */
 
 SELECT
     SUM(
@@ -451,39 +226,15 @@ SELECT
         AS zero_schooling
 FROM WLE_raw;
 
-/*
-AUDIT RESULT
-------------
-Zero life-expectancy values: 10
-Zero adult-mortality values: 10
-Zero GDP values:             448
-Zero BMI values:              34
-Zero Polio values:            19
-Zero Diphtheria values:       19
-Zero Schooling values:       191
-
-Interpretation:
-Zero-frequency patterns suggest that several variables use zero as a missing-
-data placeholder. These values must not be included automatically in averages,
-correlations, or country comparisons. Field-specific analytical rules will be
-documented before the business analysis begins.
-*/
+/* RESULT: Several analytical fields contain zeros that could bias averages and
+   correlations. Their treatment will be documented during cleaning. */
 
 
 /*==============================================================================
-FINAL AUDIT SUMMARY
--------------------------------------------------------------------------------
-Raw records:                         2,941
-Countries:                             193
-Years:                           2007-2022
-Duplicate country-year groups:           3
-Excess duplicate records:                 3
-Missing status values:                    8
-Missing life-expectancy values:           2
-Countries with incomplete histories:     10
+AUDIT SUMMARY
+2,941 raw rows | 193 countries | 2007-2022 | 3 excess duplicates
+8 missing status values | 2 missing life-expectancy values
+10 countries with incomplete histories
 
-NEXT STEP
--------------------------------------------------------------------------------
-Create WLE_staging as a reproducible working copy of WLE_raw. All cleaning will
-occur in the staging or analytical layers while WLE_raw remains unchanged.
+Next: rebuild a working staging layer while preserving WLE_raw.
 ==============================================================================*/
