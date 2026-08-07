@@ -28,7 +28,7 @@ time, and which outcomes differ materially from economic peers.
 > opportunities based on life expectancy, mortality, immunization, education,
 > and economic indicators?
 
-See the complete [Phase 2 Business Understanding](docs/02_business_understanding.md) and [Phase 3 Data Understanding](docs/03_data_understanding.md).
+See the complete [Business Understanding](docs/business_understanding.md) and [Data Understanding](docs/data_understanding.md).
 
 ## Key findings
 
@@ -79,8 +79,8 @@ The raw CSV contained 2,941 rows. The SQL workflow:
 | [`sql/WLE_03_data_validation.sql`](sql/WLE_03_data_validation.sql) | Independent quality tests and final gate |
 | [`sql/WLE_04_business_analysis.sql`](sql/WLE_04_business_analysis.sql) | Business questions, KPIs, and recommendations |
 | [`docs/WLE_data_dictionary.md`](docs/WLE_data_dictionary.md) | Standardized fields and missing-value rules |
-| [`docs/02_business_understanding.md`](docs/02_business_understanding.md) | Business decision, stakeholders, success measures, and claim boundaries |
-| [`docs/03_data_understanding.md`](docs/03_data_understanding.md) | Dataset grain, field roles, quality treatment, and analytical readiness |
+| [`docs/business_understanding.md`](docs/business_understanding.md) | Business decision, stakeholders, success measures, and claim boundaries |
+| [`docs/data_understanding.md`](docs/data_understanding.md) | Dataset grain, field roles, quality treatment, and analytical readiness |
 | [`data/README.md`](data/README.md) | Source-file requirements and import notes |
 
 ## Tools and SQL skills
